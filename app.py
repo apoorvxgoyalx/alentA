@@ -1,7 +1,5 @@
 import streamlit as st
-import os
 from hiring_assistant import HiringAssistant
-import time
 
 # Page configuration
 st.set_page_config(
@@ -9,44 +7,6 @@ st.set_page_config(
     page_icon="👨‍💼",
     layout="centered"
 )
-
-# Define CSS for chat interface
-st.markdown("""
-<style>
-.user-message {
-    background-color: #e6f7ff;
-    padding: 10px 15px;
-    border-radius: 15px 15px 0 15px;
-    margin: 10px 0;
-    max-width: 80%;
-    align-self: flex-end;
-    float: right;
-    clear: both;
-}
-.assistant-message {
-    background-color: #f0f2f5;
-    padding: 10px 15px;
-    border-radius: 15px 15px 15px 0;
-    margin: 10px 0;
-    max-width: 80%;
-    align-self: flex-start;
-    float: left;
-    clear: both;
-}
-.chat-container {
-    height: 400px;
-    overflow-y: auto;
-    padding: 10px;
-    margin-bottom: 10px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-}
-.message-container {
-    overflow: hidden;
-    margin-bottom: 10px;
-}
-</style>
-""", unsafe_allow_html=True)
 
 # Initialize session state
 if "initialized" not in st.session_state:
@@ -67,54 +27,49 @@ def initialize_assistant():
 # Main application
 st.title("TalentScout Hiring Assistant")
 
-# API key input (in sidebar for cleanliness)
+# Sidebar for configuration
 with st.sidebar:
     st.header("Configuration")
     if not st.session_state.initialized:
-        api_key = st.text_input("Enter your OpenAI API Key", type="password")
+        api_key = st.text_input("Enter your Groq API Key", type="password")
         st.session_state.api_key = api_key
-        if st.button("Start Assistant"):
+        if st.button("Start Assistant") and api_key:
             initialize_assistant()
+            st.rerun()  # Rerun to reflect initialized state
+    else:
+        if st.button("Reset Conversation"):
+            st.session_state.initialized = False
+            st.session_state.messages = []
+            st.session_state.assistant = None
+            st.rerun()
 
 # Chat interface
 if st.session_state.initialized:
-    # Display chat messages
-    chat_container = st.container()
+    # Display chat messages using st.chat_message
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
     
-    with chat_container:
-        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-        for message in st.session_state.messages:
-            if message["role"] == "user":
-                st.markdown(f'<div class="message-container"><div class="user-message">{message["content"]}</div></div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="message-container"><div class="assistant-message">{message["content"]}</div></div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    # User input
-    user_input = st.text_input("Type your message here...", key="user_input")
-    
-    if st.button("Send") or user_input:
-        if user_input:  # Prevent empty messages
-            # Add user message to chat
-            st.session_state.messages.append({"role": "user", "content": user_input})
-            
-            # Process user input and get response
-            assistant_response = st.session_state.assistant.process_user_input(user_input)
-            
-            # Add assistant response to chat
-            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
-            
-            # Clear input box
-            st.session_state.user_input = ""
-            
-            # Force refresh to show new messages
-            st.experimental_rerun()
+    # User input with chat-style input
+    if prompt := st.chat_input("Type your message here..."):
+        # Add user message to chat
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Process input and get response
+        with st.spinner("Assistant is thinking..."):
+            assistant_response = st.session_state.assistant.process_user_input(prompt)
+        
+        # Add assistant response to chat
+        st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+        with st.chat_message("assistant"):
+            st.markdown(assistant_response)
+        
+        # Rerun to update the UI
+        st.rerun()
 
-else:
-    st.info("Please enter your OpenAI API key in the sidebar to start the assistant.")
-
-# Display current candidate information (for debugging/development)
-if st.session_state.initialized and st.session_state.assistant:
+    # Display candidate information
     with st.sidebar:
         st.header("Candidate Information")
         candidate_data = st.session_state.assistant.candidate_data
@@ -129,10 +84,6 @@ if st.session_state.initialized and st.session_state.assistant:
         
         st.header("Conversation State")
         st.write(f"Stage: {st.session_state.assistant.state['stage']}")
-        st.write(f"Fields Collected: {', '.join(st.session_state.assistant.state['fields_collected'])}")
-        
-        if st.button("Reset Conversation"):
-            st.session_state.initialized = False
-            st.session_state.messages = []
-            st.session_state.assistant = None
-            st.experimental_rerun()
+        st.write(f"Fields Collected: {', '.join(st.session_state.assistant.state['fields_collected']) or 'None'}")
+else:
+    st.info("Please enter your Groq API key in the sidebar to start the assistant.")
